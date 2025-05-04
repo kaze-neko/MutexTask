@@ -1,7 +1,7 @@
 package main
 
 import (
-	wallet "concurrency/solution" // Импортируем пакет wallet из папки solution
+	"concurrency/wallet" 
 	"reflect"
 	"sync"
 	"testing"
