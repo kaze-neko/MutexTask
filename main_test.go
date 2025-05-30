@@ -1,95 +1,108 @@
 package main
 
 import (
-	"concurrency/wallet" 
+	"concurrency/wallet"
+	"math/rand"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 )
 
-// isRWMutexUsed проверяет, содержит ли переданная структура или указатель на структуру поле типа sync.RWMutex
+// проверяет, содержит ли структура поле типа sync.RWMutex
 func isRWMutexUsed(v interface{}) bool {
-	typ := reflect.TypeOf(v) // Получаем тип переданного значения
-
-	// Если передан указатель, получаем тип элемента (структуры), чтобы проверить её поля
+	var typ = reflect.TypeOf(v) // Получаем тип переданного значения
+	// если передан указатель, получаем тип элемента (структуры), чтобы проверить её поля
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
 	}
-
-	// Проверяем, что тип — структура
+	// проверяем, что тип — структура
 	if typ.Kind() == reflect.Struct {
-		// Перебираем все поля структуры
+		// перебираем все поля структуры
 		for i := 0; i < typ.NumField(); i++ {
-			// Если тип поля совпадает с "sync.RWMutex", возвращаем true
+			// если тип поля совпадает с "sync.RWMutex", возвращаем true
 			if typ.Field(i).Type.String() == "sync.RWMutex" {
 				return true
 			}
 		}
 	}
-
-	// Если поле sync.RWMutex не найдено, возвращаем false
 	return false
 }
 
-// TestIsRWMutexUsed данный тест проверяет, что структура Wallet содержит поле sync.RWMutex
+// проверка того, что структура Wallet содержит поле sync.RWMutex
 func TestIsRWMutexUsed(t *testing.T) {
-	// Arrange: подготовить тестовые данные — создаём указатель на Wallet
-	userWallet := &wallet.Wallet{}
-	// Act: выполняем действие — вызываем функцию isRWMutexUsed, передавая указатель
-	result := isRWMutexUsed(userWallet)
-	// Assert: проверяем результат — ожидаем, что поле sync.RWMutex есть (true)
-	if !result {
-		t.Errorf("expected Wallet to have sync.RWMutex, but it is missing")
+	var userWallet = &wallet.Wallet{}
+	if !isRWMutexUsed(userWallet) {
+		t.Errorf("Ожидалось, что структура Wallet содержит sync.RWMutex, однако такого поля нет\n")
 	}
 }
 
-// TestRefill тестирует пополнение кошелька
+// тест конкрурентного пополнения кошелька
 func TestRefill(t *testing.T) {
-	// Arrange: Подготовка тестовых данных
-	userWallet := &wallet.Wallet{} // Создаем новый экземпляр кошелька
-	var wg sync.WaitGroup          // Создаем WaitGroup для ожидания завершения горутин
-	wg.Add(100000)                 // Устанавливаем количество горутин, которые мы собираемся запустить
-
-	// Act: Выполнение тестируемого действия
-	for i := 0; i < 100000; i++ {
+	var userWallet = &wallet.Wallet{}
+	var wg sync.WaitGroup
+	for i := 0; i < 10000; i++ {
+		wg.Add(1)
 		go func() {
-			defer wg.Done()              // Уменьшаем счетчик WaitGroup после завершения горутины
-			wallet.Refill(userWallet, 1) // Пополняем кошелек на 1
+			defer wg.Done()
+			userWallet.Refill(1)
 		}()
 	}
-
-	wg.Wait() // Ожидаем завершения всех горутин
-
-	// Assert: Проверка ожидаемого результата
-	expectedBalance := 100000 // Ожидаем, что баланс будет равен 100000
-	if got := wallet.GetBalance(userWallet); got != expectedBalance {
-		t.Errorf("expected balance %d, got %d", expectedBalance, got) // Если баланс не совпадает, выводим ошибку
+	wg.Wait()
+	var expectedBalance = 10000
+	// тест не пройден, если полученное значение баланса не равно ожидаемому
+	if got := userWallet.GetBalance(); got != expectedBalance {
+		t.Errorf("Ожидался баланс %d, получено %d\n", expectedBalance, got)
 	}
 }
 
-// TestWithdrawal тестирует списание средств из кошелька
+// тест конкурентного списания средств из кошелька
 func TestWithdrawal(t *testing.T) {
-	// Arrange: Подготовка тестовых данных
-	userWallet := &wallet.Wallet{}   // Создаем новый экземпляр кошелька
-	wallet.Refill(userWallet, 10000) // Пополняем кошелек на 10000
-	var wg sync.WaitGroup            // Создаем WaitGroup для ожидания завершения горутин
-	wg.Add(5000)                     // Устанавливаем количество горутин, которые мы собираемся запустить
-
-	// Act: Выполнение тестируемого действия
+	var userWallet = &wallet.Wallet{}
+	userWallet.Refill(10000)
+	var wg sync.WaitGroup
 	for i := 0; i < 5000; i++ {
+		wg.Add(1)
 		go func() {
-			defer wg.Done() // Уменьшаем счетчик WaitGroup после завершения горутины
-			if err := wallet.Withdrawal(userWallet, 1); err != nil {
-				t.Errorf("unexpected error: %v", err) // Если произошла ошибка, выводим ее
+			defer wg.Done()
+			if err := userWallet.Withdrawal(1); err != nil {
+				t.Errorf("Ошибка списания: %v", err) // тест провален, если произошла ошибка списания (нехватка средств)
 			}
 		}()
 	}
+	wg.Wait()
+	var expectedBalance = 10000 - 5000 // ожидаемое значение баланса = начальное состояние (10000) - сумма списаний (5000)
+	// тест не пройден, если полученное значение баланса не равно ожидаемому
+	if got := userWallet.GetBalance(); got != expectedBalance {
+		t.Errorf("Ожидался баланс %d, получено %d\n", expectedBalance, got)
+	}
+}
 
-	wg.Wait() // Ожидаем завершения всех горутин
-
-	// Assert: Проверка ожидаемого результата
-	expectedBalance := 10000 - 5000 // Ожидаем, что баланс будет равен 5000 (10000 - 5000)
-	if got := wallet.GetBalance(userWallet); got != expectedBalance {
-		t.Errorf("expected balance %d, got %d", expectedBalance, got) // Если баланс не совпадает, выводим ошибку
+// проверка корректности отображения баланса при конкурентном доступе
+func TestGetBalance(t *testing.T) {
+	var userWallet = &wallet.Wallet{}
+	var wg sync.WaitGroup
+	for i := 0; i < 10000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rand.Seed(time.Now().UnixNano())
+			time.Sleep(time.Nanosecond * time.Duration(rand.Intn(1000)))
+			if i%2 == 0 {
+				userWallet.Refill(1)
+			} else {
+				userWallet.Withdrawal(1)
+			}
+		}()
+	}
+	wg.Wait()
+	var log = userWallet.GetLog()
+	var logSum int
+	for i := 0; i < len(log); i++ {
+		logSum += log[i]
+	}
+	// тест не пройден, если баланс, полученный двумя разными способами не совпадает
+	if logSum != userWallet.GetBalance() {
+		t.Errorf("Ожидалось, что баланс, полученный из переменной баланса, и баланс, полученный в результате анализа логов списания и пополнения, будут совпадать, но получены различные значения: баланс(логи) %d, баланс (переменная) %d\n", logSum, userWallet.GetBalance())
 	}
 }

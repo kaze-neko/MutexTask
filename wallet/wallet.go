@@ -4,32 +4,37 @@ import (
 	"errors"
 )
 
-// Ошибка, возникающая при недостатке средств на кошельке
+// ошибка, возникающая при недостатке средств на кошельке
 var errInsufficientFunds = errors.New("недостаточно средств")
 
-// Структура Wallet представляет собой кошелек с балансом и мьютексом для синхронизации
+// структура Кошелёк
 type Wallet struct {
-	balance int // Текущий баланс кошелька
+	balance int   // банас кошелька
+	log     []int // лог операций кошелька
 }
 
 // функция списания
-func Withdrawal(wallet *Wallet, amount int) error {
-	// Проверяем, достаточно ли средств для списания
+func (wallet *Wallet) Withdrawal(amount int) error {
+	// проверка, достаточно ли средств для списания
 	if wallet.balance-amount < 0 {
-		return errInsufficientFunds // Возвращаем ошибку, если средств недостаточно
+		return errInsufficientFunds
 	}
-	wallet.balance -= amount // Уменьшаем баланс на указанную сумму
-	// fmt.Printf("Было списано %d монет(ы), текущий баланс: %d монет(ы)\n", amount, wallet.balance)
-	return nil // Возвращаем nil, если списание прошло успешно
+	wallet.balance -= amount
+	wallet.log = append(wallet.log, -amount)
+	return nil
 }
 
 // функция пополнения
-func Refill(wallet *Wallet, amount int) {
-	wallet.balance += amount // Увеличиваем баланс на указанную сумму
-	// fmt.Printf("Было начисленно %d монет(ы), текущий баланс: %d монет(ы)\n", amount, wallet.balance)
+func (wallet *Wallet) Refill(amount int) {
+	wallet.balance += amount
+	wallet.log = append(wallet.log, amount)
 }
 
-// функция получения баланса (стандартная)
-func GetBalance(wallet *Wallet) int {
-	return wallet.balance // Возвращаем текущий баланс
+// функция получения баланса
+func (wallet *Wallet) GetBalance() int {
+	return wallet.balance
+}
+
+func (wallet *Wallet) GetLog() []int {
+	return wallet.log
 }
